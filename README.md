@@ -19,6 +19,7 @@ You can use a **login node**, **interactive node** (e.g. `chpclic1`), or **DTN**
 
 ```bash
 ssh <username>@lengau.chpc.ac.za
+ssh -X chpclic1
 ```
 
 ---
