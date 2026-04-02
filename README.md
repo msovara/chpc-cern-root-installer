@@ -127,8 +127,8 @@ conda deactivate
 ```bash
 #!/bin/bash
 #PBS -N root_job
-#PBS -l select=1:ncpus=4:mem=8GB
-#PBS -q workq
+#PBS -l select=1:ncpus=24
+#PBS -q smp
 
 module load chpc/python/anaconda/3-2024.10.1
 source "$(conda info --base)/etc/profile.d/conda.sh"
