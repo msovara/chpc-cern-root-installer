@@ -41,20 +41,38 @@ conda --version
 
 ---
 
-## 3. Use a personal package cache (recommended on CHPC)
+## 3. Put Conda **envs** and **pkgs** on Lustre (recommended)
 
-The site install under `/home/apps/chpc/bio/...` can keep a **corrupted** copy of compiler packages (e.g. `libstdcxx-devel_linux-64`). That leads to `CondaVerificationError` during **Verifying transaction**. Pointing Conda at your **home** `pkgs` directory avoids that broken cache.
-
-```bash
-mkdir -p ~/.conda/pkgs
-export CONDA_PKGS_DIRS=$HOME/.conda/pkgs
-```
-
-To make this persistent:
+**CHPC recommends not storing large Conda environments and package caches under your home directory** (small quota, NFS). Use **Lustre** instead, for example:
 
 ```bash
-echo 'export CONDA_PKGS_DIRS=$HOME/.conda/pkgs' >> ~/.bashrc
+export LUSTRE_CONDA=/mnt/lustre/users/${USER}/conda
+mkdir -p "${LUSTRE_CONDA}/pkgs" "${LUSTRE_CONDA}/envs"
 ```
+
+Register those locations with Conda (once per user; stored in `~/.condarc`):
+
+```bash
+conda config --prepend pkgs_dirs "${LUSTRE_CONDA}/pkgs"
+conda config --prepend envs_dirs "${LUSTRE_CONDA}/envs"
+```
+
+Optional: also set the cache variable in the shell so every tool agrees (matches `pkgs_dirs`):
+
+```bash
+export CONDA_PKGS_DIRS="${LUSTRE_CONDA}/pkgs"
+```
+
+To make **`CONDA_PKGS_DIRS`** persistent:
+
+```bash
+echo 'export LUSTRE_CONDA=/mnt/lustre/users/${USER}/conda' >> ~/.bashrc
+echo 'export CONDA_PKGS_DIRS="${LUSTRE_CONDA}/pkgs"' >> ~/.bashrc
+```
+
+After this, **`conda create -n root_env ...`** creates **`root_env` under** `${LUSTRE_CONDA}/envs/root_env`, not under `~/.conda/envs`.
+
+**Why:** The site install under `/home/apps/chpc/bio/.../pkgs` can hold a **corrupted** copy of packages; a **personal** `pkgs` tree avoids that. Keeping **both** `pkgs` and `envs` on Lustre avoids filling home and matches CHPC guidance for large software trees.
 
 ---
 
@@ -63,7 +81,8 @@ echo 'export CONDA_PKGS_DIRS=$HOME/.conda/pkgs' >> ~/.bashrc
 Use **conda-forge only** for this environment and pin **Python** to keep the solve smaller and more predictable:
 
 ```bash
-export CONDA_PKGS_DIRS=$HOME/.conda/pkgs
+export LUSTRE_CONDA=/mnt/lustre/users/${USER}/conda
+export CONDA_PKGS_DIRS="${LUSTRE_CONDA}/pkgs"
 conda create -n root_env -c conda-forge --override-channels root python=3.12
 ```
 
@@ -86,10 +105,10 @@ Remove the old environment, then retry:
 conda env remove -n root_env -y
 ```
 
-If the directory still exists:
+If the directory still exists (adjust if you used a different `LUSTRE_CONDA`):
 
 ```bash
-rm -rf ~/.conda/envs/root_env
+rm -rf /mnt/lustre/users/${USER}/conda/envs/root_env
 ```
 
 ---
@@ -103,6 +122,8 @@ conda list | grep -E '^root\s'
 root --version
 python -c "import ROOT; print(ROOT.gROOT.GetVersion())"
 ```
+
+You should see **`root_env`** pointing at a path under **`/mnt/lustre/users/.../conda/envs/`**.
 
 ---
 
@@ -131,6 +152,8 @@ conda deactivate
 #PBS -q smp
 
 module load chpc/python/anaconda/3-2024.10.1
+export LUSTRE_CONDA=/mnt/lustre/users/${USER}/conda
+export CONDA_PKGS_DIRS="${LUSTRE_CONDA}/pkgs"
 source "$(conda info --base)/etc/profile.d/conda.sh"
 conda activate root_env
 
@@ -148,43 +171,46 @@ Adjust `module load` and queue/resources to your CHPC policy.
 | `conda: command not found` | Load the Anaconda module (step 2). |
 | Hangs at **Solving environment** | Wait 15–30+ minutes, or use **libmamba** / **mamba**, or pin `python` + smaller channel set (`--override-channels`). |
 | `CondaVerificationError` … **corrupted** (any package name) | The extracted files under `pkgs/<package>` do not match the manifest—usually **incomplete download/extract** or **full disk**. See **Complete reset** below. |
-| Errors under `/home/apps/chpc/bio/.../pkgs` | Shared site cache; use **`CONDA_PKGS_DIRS`** (step 3) and/or ask CHPC to repair that directory. |
-| Errors under **`$HOME/.conda/pkgs/`** (e.g. `jedi`, `libstdcxx-devel`) | Your **personal** cache is corrupt or partial—**delete that package folder** or wipe `~/.conda/pkgs` (see **Complete reset**). |
-| `(root_env)` in prompt but `EnvironmentLocationNotFound` | The env **never finished installing**. Run `conda deactivate` until prompt shows `(base)`, remove `~/.conda/envs/root_env`, then recreate. |
+| Errors under `/home/apps/chpc/bio/.../pkgs` | Shared site cache; use **Lustre `pkgs_dirs`** (step 3) and/or ask CHPC to repair that directory. |
+| Errors under **`.../conda/pkgs/`** on Lustre (e.g. `jedi`, `libstdcxx-devel`) | Your **personal** cache is corrupt or partial—**delete that package folder** or wipe `${LUSTRE_CONDA}/pkgs` (see **Complete reset**). |
+| `(root_env)` in prompt but `EnvironmentLocationNotFound` | The env **never finished installing**. Run `conda deactivate` until prompt shows `(base)`, remove `${LUSTRE_CONDA}/envs/root_env`, then recreate. |
 | `CondaValueError: prefix already exists` | Step 5. |
 
 ### Complete reset (when verification keeps failing)
 
-Corruption in **`~/.conda/pkgs`** is common after interrupted installs, NFS glitches, or **home directory quota full**. Check space first:
+Corruption in the **pkgs** cache is common after interrupted installs, flaky I/O, or **quota full**. Check **Lustre** space (and home if you still use it for anything):
 
 ```bash
+df -h /mnt/lustre/users/${USER}
 df -h $HOME
 quota -s 2>/dev/null || true
 ```
 
-Then reset caches and the broken env in one clean sequence:
+Then reset caches and the broken env (paths match step 3):
 
 ```bash
+export LUSTRE_CONDA=/mnt/lustre/users/${USER}/conda
+
 module purge
 module load chpc/python/anaconda/3-2024.10.1
 
 conda deactivate 2>/dev/null || true
 conda deactivate 2>/dev/null || true
 
-rm -rf ~/.conda/envs/root_env
-rm -rf ~/.conda/pkgs/*
+rm -rf "${LUSTRE_CONDA}/envs/root_env"
+rm -rf "${LUSTRE_CONDA}/pkgs"/*
 conda clean -a -y
 
-mkdir -p ~/.conda/pkgs
-export CONDA_PKGS_DIRS=$HOME/.conda/pkgs
+mkdir -p "${LUSTRE_CONDA}/pkgs" "${LUSTRE_CONDA}/envs"
+export CONDA_PKGS_DIRS="${LUSTRE_CONDA}/pkgs"
 
 conda create -n root_env -c conda-forge --override-channels root python=3.12
 ```
 
-If it still fails, remove **only** the package conda names in the error (example for `jedi`):
+If it still fails, remove **only** the package named in the error, e.g.:
 
 ```bash
-rm -rf ~/.conda/pkgs/jedi-*
+rm -rf "${LUSTRE_CONDA}/pkgs/jedi-*"
 ```
 
 …then run `conda create` again.
@@ -200,9 +226,9 @@ conda config --set solver libmamba
 
 Or use **mamba** (`conda install mamba -c conda-forge`) and run `mamba create -n root_env ...` instead of `conda create`.
 
-### Last resort: Miniconda in `$HOME`
+### Last resort: private Miniconda on Lustre
 
-A private Miniconda under `$HOME/miniconda3` avoids sharing `base` and sometimes problematic site configuration. Install from [Miniconda](https://docs.conda.io/en/latest/miniconda.html), then repeat steps 3–4 using **that** `conda` only.
+Install [Miniconda](https://docs.conda.io/en/latest/miniconda.html) under e.g. **`/mnt/lustre/users/${USER}/miniconda3`** (not under `$HOME` if you are avoiding large trees in home). Repeat steps 3–4 with **that** `conda` binary, and still set **`envs_dirs` / `pkgs_dirs`** to Lustre paths as above.
 
 ---
 
