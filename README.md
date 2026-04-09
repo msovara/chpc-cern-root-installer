@@ -31,7 +31,7 @@ module purge
 module load chpc/python/anaconda/3-2024.10.1
 ```
 
-Use the **current** Anaconda module from `module avail anaconda` if the version differs. Optional: `module add chpc/BIOMODULES` if your site workflow requires it.
+Use the **current** Anaconda module from `module avail anaconda` if the version differs. Optional: `module add chpc/BIOMODULES`.
 
 Confirm:
 
