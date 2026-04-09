@@ -147,8 +147,62 @@ Adjust `module load` and queue/resources to your CHPC policy.
 |--------|-------------|
 | `conda: command not found` | Load the Anaconda module (step 2). |
 | Hangs at **Solving environment** | Wait 15–30+ minutes, or use **libmamba** / **mamba**, or pin `python` + smaller channel set (`--override-channels`). |
-| `CondaVerificationError` … `libstdcxx-devel_linux-64` … **corrupted** | Set **`CONDA_PKGS_DIRS`** to `~/.conda/pkgs` (step 3), run `conda clean -a -y`, recreate env. If the error references `/home/apps/chpc/bio/.../pkgs`, ask CHPC to fix that shared cache. |
+| `CondaVerificationError` … **corrupted** (any package name) | The extracted files under `pkgs/<package>` do not match the manifest—usually **incomplete download/extract** or **full disk**. See **Complete reset** below. |
+| Errors under `/home/apps/chpc/bio/.../pkgs` | Shared site cache; use **`CONDA_PKGS_DIRS`** (step 3) and/or ask CHPC to repair that directory. |
+| Errors under **`$HOME/.conda/pkgs/`** (e.g. `jedi`, `libstdcxx-devel`) | Your **personal** cache is corrupt or partial—**delete that package folder** or wipe `~/.conda/pkgs` (see **Complete reset**). |
+| `(root_env)` in prompt but `EnvironmentLocationNotFound` | The env **never finished installing**. Run `conda deactivate` until prompt shows `(base)`, remove `~/.conda/envs/root_env`, then recreate. |
 | `CondaValueError: prefix already exists` | Step 5. |
+
+### Complete reset (when verification keeps failing)
+
+Corruption in **`~/.conda/pkgs`** is common after interrupted installs, NFS glitches, or **home directory quota full**. Check space first:
+
+```bash
+df -h $HOME
+quota -s 2>/dev/null || true
+```
+
+Then reset caches and the broken env in one clean sequence:
+
+```bash
+module purge
+module load chpc/python/anaconda/3-2024.10.1
+
+conda deactivate 2>/dev/null || true
+conda deactivate 2>/dev/null || true
+
+rm -rf ~/.conda/envs/root_env
+rm -rf ~/.conda/pkgs/*
+conda clean -a -y
+
+mkdir -p ~/.conda/pkgs
+export CONDA_PKGS_DIRS=$HOME/.conda/pkgs
+
+conda create -n root_env -c conda-forge --override-channels root python=3.12
+```
+
+If it still fails, remove **only** the package conda names in the error (example for `jedi`):
+
+```bash
+rm -rf ~/.conda/pkgs/jedi-*
+```
+
+…then run `conda create` again.
+
+### Faster solver (optional, reduces retries)
+
+If CHPC allows installing into **base**:
+
+```bash
+conda install -n base conda-libmamba-solver -c conda-forge
+conda config --set solver libmamba
+```
+
+Or use **mamba** (`conda install mamba -c conda-forge`) and run `mamba create -n root_env ...` instead of `conda create`.
+
+### Last resort: Miniconda in `$HOME`
+
+A private Miniconda under `$HOME/miniconda3` avoids sharing `base` and sometimes problematic site configuration. Install from [Miniconda](https://docs.conda.io/en/latest/miniconda.html), then repeat steps 3–4 using **that** `conda` only.
 
 ---
 
