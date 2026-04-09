@@ -11,7 +11,7 @@ Official CHPC references:
 
 ## Where to run this
 
-You can use an  **interactive node** (e.g. `chpclic1`), or **DTN**. 
+You should use   **chpclic1** or **DTN**. 
 
 ---
 
