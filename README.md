@@ -11,7 +11,7 @@ Official CHPC references:
 
 ## Where to run this
 
-You can use a **login node**, **interactive node** (e.g. `chpclic1`), or **DTN**—anywhere you have loaded the CHPC **Anaconda** module and have network access for Conda downloads. You do **not** have to use DTN only; pick a host where `conda` is available after `module load`.
+You can use an  **interactive node** (e.g. `chpclic1`), or **DTN**. 
 
 ---
 
